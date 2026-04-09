@@ -1,0 +1,86 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: documents
+    // Fields:
+    //   - name: string (required) - Filename
+    //   - text: string (required, max 500k) - Extracted text
+    //   - userId: string (required, immutable) - Owner UID
+    //   - createdAt: number (required, immutable) - Creation timestamp
+    //   - version: number (optional) - Version number
+    //   - analysis: map (optional) - AI analysis results
+    //
+    // Collection: documents/{docId}/versions
+    // Fields:
+    //   - name: string (required)
+    //   - text: string (required)
+    //   - userId: string (required)
+    //   - createdAt: number (required)
+    //   - archivedAt: number (required)
+    //   - version: number (optional)
+    //   - analysis: map (optional)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isOwner(resource.data.userId);
+    }
+
+    function isValidDocument(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() < 255 &&
+             data.text is string && data.text.size() < 1000000 &&
+             data.userId == request.auth.uid &&
+             data.createdAt is number;
+    }
+
+    function isValidVersion(data) {
+      return data.name is string &&
+             data.text is string &&
+             data.userId == request.auth.uid &&
+             data.createdAt is number &&
+             data.archivedAt is number;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /documents/{docId} {
+      allow read: if isDocOwner();
+      allow create: if isAuthenticated() && isValidDocument(request.resource.data);
+      allow update: if isDocOwner() && isValidDocument(request.resource.data) &&
+                      request.resource.data.userId == resource.data.userId &&
+                      request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isDocOwner();
+
+      match /versions/{versionId} {
+        allow read: if isOwner(get(/databases/$(database)/documents/documents/$(docId)).data.userId);
+        allow create: if isOwner(get(/databases/$(database)/documents/documents/$(docId)).data.userId) && 
+                        isValidVersion(request.resource.data);
+        allow update, delete: if false; // Versions are immutable
+      }
+    }
+
+    // Default deny
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}
