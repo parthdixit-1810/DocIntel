@@ -1,0 +1,51 @@
+{
+  "entities": {
+    "Document": {
+      "title": "Document",
+      "description": "Main document entity containing text and analysis results",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Filename" },
+        "text": { "type": "string", "description": "Extracted text content" },
+        "userId": { "type": "string", "description": "Owner UID" },
+        "createdAt": { "type": "number", "description": "Creation timestamp" },
+        "version": { "type": "number", "description": "Current version number" },
+        "analysis": {
+          "type": "object",
+          "properties": {
+            "summary": { "type": "string" },
+            "entities": { "type": "object" },
+            "risks": { "type": "array" },
+            "highlights": { "type": "array" }
+          }
+        }
+      },
+      "required": ["name", "text", "userId", "createdAt"]
+    },
+    "DocumentVersion": {
+      "title": "DocumentVersion",
+      "description": "Archived version of a document",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "text": { "type": "string" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "archivedAt": { "type": "number" },
+        "version": { "type": "number" },
+        "analysis": { "type": "object" }
+      },
+      "required": ["name", "text", "userId", "createdAt", "archivedAt"]
+    }
+  },
+  "firestore": {
+    "/documents/{docId}": {
+      "schema": "Document",
+      "description": "User documents"
+    },
+    "/documents/{docId}/versions/{versionId}": {
+      "schema": "DocumentVersion",
+      "description": "Historical versions of a document"
+    }
+  }
+}
