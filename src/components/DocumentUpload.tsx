@@ -1,23 +1,19 @@
 import React, { useState, useCallback } from 'react';
-import { User } from 'firebase/auth';
-import { db } from '../firebase';
-import { collection, addDoc } from 'firebase/firestore';
 import { analyzeDocument } from '../lib/gemini';
 import { DocumentData } from '../types';
 import { Button } from './ui/button';
 import { Upload, X, FileText, Loader2, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
-import { handleFirestoreError, OperationType } from '../lib/utils';
+
+
 
 interface DocumentUploadProps {
-  user: User;
   onComplete: (doc: DocumentData) => void;
   onCancel: () => void;
-  parentDoc?: DocumentData;
 }
 
-export function DocumentUpload({ user, onComplete, onCancel, parentDoc }: DocumentUploadProps) {
+export function DocumentUpload({ onComplete, onCancel }: DocumentUploadProps) {
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<'idle' | 'uploading' | 'analyzing' | 'complete'>('idle');
 
@@ -35,7 +31,6 @@ export function DocumentUpload({ user, onComplete, onCancel, parentDoc }: Docume
 
   const handleUpload = async () => {
     if (!file) return;
-
     try {
       setStatus('uploading');
       const formData = new FormData();
@@ -52,56 +47,26 @@ export function DocumentUpload({ user, onComplete, onCancel, parentDoc }: Docume
       setStatus('analyzing');
       const analysis = await analyzeDocument(text);
 
-      if (parentDoc) {
-        // Versioning: Move current to versions subcollection and update main
-        const versionRef = collection(db, 'documents', parentDoc.id, 'versions');
-        await addDoc(versionRef, {
-          ...parentDoc,
-          id: undefined, // Don't store the ID inside the doc
-          archivedAt: Date.now()
-        }).catch(err => handleFirestoreError(err, OperationType.CREATE, `documents/${parentDoc.id}/versions`));
+      // Add new document to backend
+      const docData = {
+        name: fileName,
+        text,
+        analysis,
+      };
+      const docRes = await fetch('/api/documents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(docData),
+      });
+      if (!docRes.ok) throw new Error('Failed to save document');
+      const savedDoc = await docRes.json();
 
-        const docData = {
-          name: fileName,
-          text,
-          analysis,
-          userId: user.uid,
-          createdAt: Date.now(),
-          version: (parentDoc.version || 1) + 1
-        };
-
-        const { doc, updateDoc } = await import('firebase/firestore');
-        await updateDoc(doc(db, 'documents', parentDoc.id), docData).catch(err => handleFirestoreError(err, OperationType.UPDATE, `documents/${parentDoc.id}`));
-        
-        setStatus('complete');
-        toast.success(`New version (v${docData.version}) created!`);
-        onComplete({ id: parentDoc.id, ...docData });
-      } else {
-        // New document
-        const docData = {
-          name: fileName,
-          text,
-          analysis,
-          userId: user.uid,
-          createdAt: Date.now(),
-          version: 1
-        };
-
-        const docRef = await addDoc(collection(db, 'documents'), docData).catch(err => {
-          handleFirestoreError(err, OperationType.CREATE, 'documents');
-          return null;
-        });
-        
-        if (!docRef) return;
-        
-        setStatus('complete');
-        toast.success('Document analyzed successfully!');
-        onComplete({ id: docRef.id, ...docData });
-      }
+      setStatus('complete');
+      toast.success('Document analyzed and saved!');
+      onComplete(savedDoc);
     } catch (error) {
-      console.error('Upload error:', error);
-      toast.error('Failed to process document. Please try again.');
       setStatus('idle');
+      toast.error('Upload error: ' + (error instanceof Error ? error.message : String(error)));
     }
   };
 

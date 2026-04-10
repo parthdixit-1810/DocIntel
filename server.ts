@@ -11,6 +11,18 @@ interface MulterRequest extends express.Request {
   file?: any; // Use any for simplicity if types are still problematic
 }
 
+
+// In-memory document store
+type DocumentData = {
+  id: string;
+  name: string;
+  text: string;
+  analysis?: any;
+  createdAt: number;
+  version?: number;
+};
+const documents: DocumentData[] = [];
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -50,6 +62,35 @@ async function startServer() {
       console.error("Extraction error:", error);
       res.status(500).json({ error: "Failed to extract text from document" });
     }
+  });
+
+  // REST API: List all documents
+  app.get("/api/documents", (req, res) => {
+    res.json(documents);
+  });
+
+  // REST API: Add a new document
+  app.post("/api/documents", (req, res) => {
+    const { name, text, analysis } = req.body;
+    const doc: DocumentData = {
+      id: Math.random().toString(36).slice(2),
+      name,
+      text,
+      analysis,
+      createdAt: Date.now(),
+      version: 1,
+    };
+    documents.unshift(doc);
+    res.status(201).json(doc);
+  });
+
+  // REST API: Update a document (optional)
+  app.put("/api/documents/:id", (req, res) => {
+    const { id } = req.params;
+    const idx = documents.findIndex(d => d.id === id);
+    if (idx === -1) return res.status(404).json({ error: "Not found" });
+    documents[idx] = { ...documents[idx], ...req.body };
+    res.json(documents[idx]);
   });
 
   // Vite middleware for development

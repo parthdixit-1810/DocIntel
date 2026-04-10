@@ -15,6 +15,13 @@ export interface AnalysisResult {
 }
 
 export async function analyzeDocument(text: string): Promise<AnalysisResult> {
+  // Defensive: ensure all array fields are true arrays before sending
+  function ensureArray(val: any) {
+    if (Array.isArray(val)) return val;
+    if (val && typeof val === 'object') return Object.values(val);
+    return [];
+  }
+
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: [
@@ -58,7 +65,7 @@ export async function analyzeDocument(text: string): Promise<AnalysisResult> {
                   properties: {
                     title: { type: Type.STRING },
                     content: { type: Type.STRING },
-                    type: Type.STRING
+                    type: { type: Type.STRING }
                   }
                 }
               }
@@ -82,7 +89,17 @@ export async function analyzeDocument(text: string): Promise<AnalysisResult> {
     }
   });
 
-  return JSON.parse(response.text);
+  // Defensive: ensure all array fields in the result are arrays
+  const result = JSON.parse(response.text);
+  if (result.entities) {
+    result.entities.parties = ensureArray(result.entities.parties);
+    result.entities.dates = ensureArray(result.entities.dates);
+    result.entities.obligations = ensureArray(result.entities.obligations);
+    result.entities.clauses = ensureArray(result.entities.clauses);
+  }
+  result.risks = ensureArray(result.risks);
+  result.highlights = ensureArray(result.highlights);
+  return result;
 }
 
 export async function askDocumentQuestion(text: string, question: string, history: { role: string, parts: { text: string }[] }[] = []) {
